@@ -1,0 +1,517 @@
+userSettings:
+  dbPassword: 5C4qh8Py8V
+
+#
+# FLYTEADMIN
+#
+
+flyteadmin:
+  enabled: true
+  # -- Replicas count for Flyteadmin deployment
+  replicaCount: 1
+  image:
+    # -- Docker image for Flyteadmin deployment
+    repository: cr.flyte.org/flyteorg/flyteadmin # FLYTEADMIN_IMAGE
+    tag: v1.1.29-hotfix # FLYTEADMIN_TAG
+    pullPolicy: IfNotPresent
+  # -- IAM role for SA: https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
+  serviceAccount:
+    # -- If the service account is created by you, make this false, else a new service account will be created and the iam-role-flyte will be added
+    # you can change the name of this role
+    create: true
+    # -- Should a service account always be created for flyteadmin even without an actual flyteadmin deployment running (e.g. for multi-cluster setups)
+    alwaysCreate: false
+    # -- Annotations for ServiceAccount attached to Flyteadmin pods
+    annotations: {}
+    # -- ImagePullSecrets to automatically assign to the service account
+    imagePullSecrets: []
+    # -- Should a ClusterRole be created for Flyteadmin
+    createClusterRole: true
+  # -- Annotations for Flyteadmin pods
+  podAnnotations: {}
+  # -- nodeSelector for Flyteadmin deployment
+  nodeSelector: {}
+  # -- tolerations for Flyteadmin deployment
+  tolerations: []
+  # -- affinity for Flyteadmin deployment
+  affinity: {}
+  secrets: {}
+  additionalVolumes: []
+  additionalVolumeMounts: []
+  # -- Appends extra command line arguments to the serve command
+  extraArgs: {}
+  # -- Sets priorityClassName for flyteadmin pod(s).
+  priorityClassName: ""
+  resources:
+    limits:
+      ephemeral-storage: 200Mi
+    requests:
+      cpu: 50m
+      ephemeral-storage: 200Mi
+      memory: 200Mi
+
+#
+# FLYTESCHEDULER
+#
+
+flytescheduler: {}
+
+#
+# DATACATALOG
+#
+
+datacatalog:
+  replicaCount: 1
+  serviceAccount:
+    # -- If the service account is created by you, make this false
+    create: true
+
+  resources:
+    limits:
+      cpu: 1
+      ephemeral-storage: 200Mi
+    requests:
+      cpu: 500m
+      ephemeral-storage: 200Mi
+      memory: 200Mi
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: datacatalog
+          topologyKey: kubernetes.io/hostname
+
+#
+# FLYTEPROPELLER
+#
+
+flytepropeller:
+  replicaCount: 1
+  manager: false
+  serviceAccount:
+    # -- If the service account is created by you, make this false
+    create: true
+  image:
+    # -- Docker image for Flytepropeller deployment
+    repository: cr.flyte.org/flyteorg/flytepropeller # FLYTEPROPELLER_IMAGE
+    tag: v1.1.15 # FLYTEPROPELLER_TAG
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1
+      ephemeral-storage: 1Gi
+      memory: 2Gi
+    requests:
+      cpu: 1
+      ephemeral-storage: 1Gi
+      memory: 2Gi
+  cacheSizeMbs: 1024
+  # -- Sets priorityClassName for propeller pod(s).
+  priorityClassName: "system-cluster-critical"
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: flytepropeller
+          topologyKey: kubernetes.io/hostname
+
+#
+# FLYTECONSOLE
+#
+
+flyteconsole:
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 250m
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: flyteconsole
+          topologyKey: kubernetes.io/hostname
+
+#
+# COMMON
+#
+
+common:
+  ingress:
+    albSSLRedirect: true
+    separateGrpcIngress: true
+#    annotations:
+#      # -- aws-load-balancer-controller v2.1 or higher is required - https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/
+#      # For EKS if using [ALB](https://kubernetes-sigs.github.io/aws-load-balancer-controller/guide/ingress/annotations/), these annotations are set
+#      kubernetes.io/ingress.class: "nginx"
+#      alb.ingress.kubernetes.io/tags: service_instance=production
+#      alb.ingress.kubernetes.io/scheme: internet-facing
+#      # -- This is the certificate arn of the cert imported in AWS certificate manager.
+#      alb.ingress.kubernetes.io/certificate-arn: "{{ .Values.userSettings.certificateArn }}"
+#      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+#      alb.ingress.kubernetes.io/actions.ssl-redirect: '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
+#      # -- Instruct ALB Controller to not create multiple load balancers (and hence maintain a single endpoint for both GRPC and Http)
+#      alb.ingress.kubernetes.io/group.name: flyte
+#      alb.ingress.kubernetes.io/target-type: 'ip'
+    separateGrpcIngressAnnotations:
+      alb.ingress.kubernetes.io/backend-protocol-version: GRPC
+    tls:
+      enabled: false
+  databaseSecret:
+    name: db-pass
+    secretManifest:
+      # -- Leave it empty if your secret already exists
+      # Else you can create your own secret object. You can use Kubernetes secrets, else you can configure external secrets
+      # For external secrets please install Necessary dependencies, like, of your choice
+      # - https://github.com/hashicorp/vault
+      # - https://github.com/godaddy/kubernetes-external-secrets
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: db-pass
+      type: Opaque
+      stringData:
+        # -- If using plain text you can provide the password here
+        pass.txt: "{{ .Values.userSettings.dbPassword }}"
+
+# -----------------------------------------------------
+# Core dependencies that should be configured for Flyte to work on any platform
+# Specifically 2 - Storage (s3, gcs etc), Production RDBMS - Aurora, CloudSQL etc
+# ------------------------------------------------------
+#
+# STORAGE SETTINGS
+storage:
+  # -- Sets the storage type. Supported values are sandbox, s3, gcs and custom.
+  type: minio
+  # -- bucketName defines the storage bucket flyte will use. Required for all types except for sandbox.
+  bucketName: my-s3-bucket
+  # -- settings for storage type s3
+  minio:
+    accessKey: "minio123"
+    # -- AWS IAM user secret access key to use for S3 bucket auth, only used if authType is set to accesskey
+    secretKey: "minio123"
+    endpoint: "http://minio-1660755376.minio.svc.cluster.local:9000"
+  s3:
+    region: us-east-1
+    # -- type of authentication to use for S3 buckets, can either be iam or accesskey
+    authType: iam
+    # -- AWS IAM user access key ID to use for S3 bucket auth, only used if authType is set to accesskey
+    accessKey: "minio123"
+    # -- AWS IAM user secret access key to use for S3 bucket auth, only used if authType is set to accesskey
+    secretKey: "minio123"
+  # -- settings for storage type gcs
+  gcs:
+  # -- GCP project ID. Required for storage type gcs.
+  # projectId:
+  # -- Settings for storage type custom. See https://github:com/graymeta/stow for supported storage providers/settings.
+  custom: {}
+  # -- toggles multi-container storage config
+  enableMultiContainer: false
+  # -- default limits being applied to storage config
+  limits:
+    maxDownloadMBs: 10
+
+db:
+  datacatalog:
+    database:
+      port: 5432
+      # -- Create a user called flyteadmin
+      username: postgres
+      host: my-release-postgresql.postgres.svc.cluster.local
+      # -- Create a DB called datacatalog (OR change the name here)
+      dbname: flyteadmin
+      passwordPath: /etc/db/pass.txt
+  admin:
+    database:
+      port: 5432
+      # -- Create a user called flyteadmin
+      username: postgres
+      host: my-release-postgresql.postgres.svc.cluster.local
+      # -- Create a DB called flyteadmin (OR change the name here)
+      dbname: flyteadmin
+      passwordPath: /etc/db/pass.txt
+#
+# CONFIGMAPS
+#
+
+configmap:
+  adminServer:
+    server:
+      httpPort: 8088
+      grpcPort: 8089
+      security:
+        secure: false
+        useAuth: false
+        allowCors: true
+        allowedOrigins:
+          # Accepting all domains for Sandbox installation
+          - "*"
+        allowedHeaders:
+          - "Content-Type"
+
+  task_resource_defaults:
+    task_resources:
+      defaults:
+        cpu: 1000m
+        memory: 1000Mi
+        storage: 1000Mi
+      limits:
+        storage: 2000Mi
+
+  core:
+    propeller:
+      rawoutput-prefix: s3://my-s3-bucket/
+      workers: 40
+      gc-interval: 12h
+      max-workflow-retries: 50
+      max-ttl-hours: 23
+      kube-client-config:
+        qps: 100
+        burst: 25
+        timeout: 30s
+      queue:
+        sub-queue:
+          type: bucket
+          rate: 100
+          capacity: 1000
+
+  # -- Resource manager configuration
+  resource_manager:
+    # -- resource manager configuration
+    propeller:
+      resourcemanager:
+        type: noop
+        # Note: By default resource manager is disable for propeller, Please use `type: redis` to enaable
+        # type: redis
+        # resourceMaxQuota: 10000
+        # redis:
+        #   hostPath: "{{ .Values.userSettings.redisHostUrl }}"
+        #   hostKey: "{{ .Values.userSettings.redisHostKey }}"
+  k8s:
+    plugins:
+      # -- Configuration section for all K8s specific plugins [Configuration structure](https://pkg.go.dev/github.com/lyft/flyteplugins/go/tasks/pluginmachinery/flytek8s/config)
+      k8s:
+        #  DEFAULT_ENV_VAR: VALUE
+        default-cpus: 100m
+        default-env-vars:
+          - FLYTE_AWS_ENDPOINT: "http://minio-1660755376.minio.svc.cluster.local:9000"
+          - FLYTE_AWS_ACCESS_KEY_ID: minio123
+          - FLYTE_AWS_SECRET_ACCESS_KEY: minio123
+        default-memory: 200Mi
+
+  enabled_plugins:
+    # -- Tasks specific configuration [structure](https://pkg.go.dev/github.com/flyteorg/flytepropeller/pkg/controller/nodes/task/config#GetConfig)
+    tasks:
+      # -- Plugins configuration, [structure](https://pkg.go.dev/github.com/flyteorg/flytepropeller/pkg/controller/nodes/task/config#TaskPluginConfig)
+      task-plugins:
+        # -- [Enabled Plugins](https://pkg.go.dev/github.com/lyft/flyteplugins/go/tasks/config#Config). Enable sagemaker*, athena if you install the backend
+        # plugins
+        enabled-plugins:
+          - container
+          - sidecar
+          - k8s-array
+          - spark
+        #          - sagemaker_hyperparameter_tuning
+        #          - sagemaker_custom_training
+        #          - sagemaker_training
+        default-for-task-types:
+          container: container
+          sidecar: sidecar
+          container_array: k8s-array
+          spark: spark
+  #          sagemaker_custom_training_task: sagemaker_custom_training
+  #          sagemaker_custom_training_job_task: sagemaker_custom_training
+
+
+  # -- Section that configures how the Task logs are displayed on the UI. This has to be changed based on your actual logging provider.
+  # Refer to [structure](https://pkg.go.dev/github.com/lyft/flyteplugins/go/tasks/logs#LogConfig) to understand how to configure various
+  # logging engines
+  task_logs:
+    plugins:
+      logs:
+        kubernetes-enabled: false
+        # -- One option is to enable cloudwatch logging for EKS, update the region and log group accordingly
+        cloudwatch-enabled: false
+
+# ----------------------------------------------------------------
+# Optional Modules
+# Flyte built extensions that enable various additional features in Flyte.
+# All these features are optional, but are critical to run certain features
+# ------------------------------------------------------------------------
+
+# -- # Flyte uses a cloud hosted Cron scheduler to run workflows on a schedule. The following module is optional. Without,
+# this module, you will not have scheduled launchplans/workflows.
+# by default aws use flyte native scheduler i.e flytescheduler
+# To use aws native scheduler please override the eks values
+workflow_scheduler:
+  enabled: true
+  type: native
+
+# --
+# Workflow notifications module is an optional dependency. Flyte uses cloud native pub-sub systems to notify users of
+# various events in their workflows
+workflow_notifications:
+  enabled: false
+  config: {}
+
+# -- **Optional Component**
+# External events are used to send events (unprocessed, as Admin see them) to
+# an SNS topic (or gcp equivalent)
+# The config is here as an example only - if not enabled, it won't be used.
+external_events:
+  enable: false
+  type: aws
+  aws:
+    region: us-east-2
+  eventsPublisher:
+    # Make sure this is not a fifo queue. Admin does not yet support
+    # writing to fifo sns topics.
+    topicName: "arn:aws:sns:us-east-2:123456:123-my-topic"
+    eventTypes:
+      - all # Or workflow, node, task. Or "*"
+
+# -- Configuration for the Cluster resource manager component. This is an optional component, that enables automatic
+# cluster configuration. This is useful to set default quotas, manage namespaces etc that map to a project/domain
+cluster_resource_manager:
+  # -- Enables the Cluster resource manager component
+  enabled: true
+  # -- Starts the cluster resource manager in standalone mode with requisite auth credentials to call flyteadmin service endpoints
+  standalone_deploy: false
+  config:
+    # -- ClusterResource parameters
+    # Refer to the [structure](https://pkg.go.dev/github.com/lyft/flyteadmin@v0.3.37/pkg/runtime/interfaces#ClusterResourceConfig) to customize.
+    cluster_resources:
+      refreshInterval: 5m
+      templatePath: "/etc/flyte/clusterresource/templates"
+      customData:
+        - production:
+            - projectQuotaCpu:
+                value: "1"
+            - projectQuotaMemory:
+                value: "1000Mi"
+        - staging:
+            - projectQuotaCpu:
+                value: "1"
+            - projectQuotaMemory:
+                value: "1000Mi"
+        - development:
+            - projectQuotaCpu:
+                value: "1"
+            - projectQuotaMemory:
+                value: "1000Mi"
+      refresh: 5m
+
+  # -- Resource templates that should be applied
+  templates:
+    # -- Template for namespaces resources
+    - key: aa_namespace
+      value: |
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: {{ namespace }}
+        spec:
+          finalizers:
+          - kubernetes
+
+    - key: ab_project_resource_quota
+      value: |
+        apiVersion: v1
+        kind: ResourceQuota
+        metadata:
+          name: project-quota
+          namespace: {{ namespace }}
+        spec:
+          hard:
+            limits.cpu: {{ projectQuotaCpu }}
+            limits.memory: {{ projectQuotaMemory }}
+
+    - key: ac_spark_role
+      value: |
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata:
+          name: spark-role
+          namespace: {{ namespace }}
+        rules:
+        - apiGroups: ["*"]
+          resources: ["pods"]
+          verbs: ["*"]
+        - apiGroups: ["*"]
+          resources: ["services"]
+          verbs: ["*"]
+        - apiGroups: ["*"]
+          resources: ["configmaps", "persistentvolumeclaims"]
+          verbs: ["*"]
+
+    - key: ad_spark_service_account
+      value: |
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: spark
+          namespace: {{ namespace }}
+        imagePullSecrets:
+          - name: dockerconfigjson-github
+
+    - key: ad_spark_secret
+      value: |
+        apiVersion: v1
+        kind: Secret
+        type: kubernetes.io/dockerconfigjson
+        metadata:
+          name: dockerconfigjson-github
+          namespace: {{ namespace }}
+        data:
+          .dockerconfigjson: eyJhdXRocyI6eyJnaGNyLmlvIjp7ImF1dGgiOiJkbUZ1Ym1ndFoyeDRPbWRvY0Y5dFMwcEdPWHAxUW1aQlNVaDNhbFJEUzB4UlQxTXdaWHBGZGpCbFVXMHpibXhLWW5JPSJ9fX0=
+
+
+    - key: ae_spark_role_binding
+      value: |
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: spark-role-binding
+          namespace: {{ namespace }}
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: Role
+          name: spark-role
+        subjects:
+        - kind: ServiceAccount
+          name: spark
+          namespace: {{ namespace }}
+
+sparkoperator:
+  # --- enable or disable Sparkoperator deployment installation
+  enabled: true
+
+  # -- Spark plugin configuration
+  plugin_config:
+    plugins:
+      spark:
+        # -- Spark default configuration
+        spark-config-default:
+          # We override the default credentials chain provider for Hadoop so that
+          # it can use the serviceAccount based IAM role or ec2 metadata based.
+          # This is more in line with how AWS works
+          - spark.hadoop.fs.s3a.aws.credentials.provider: "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+          - spark.hadoop.fs.s3a.endpoint: "http://minio-1660755376.minio.svc.cluster.local:9000"
+          - spark.hadoop.fs.s3a.access.key: "minio123"
+          - spark.hadoop.fs.s3a.secret.key: "minio123"
+          - spark.hadoop.fs.s3a.path.style.access: "true"
+          - spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version: "2"
+          - spark.kubernetes.allocation.batch.size: "50"
+          - spark.hadoop.fs.s3a.acl.default: "BucketOwnerFullControl"
+          - spark.hadoop.fs.s3n.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
+          - spark.hadoop.fs.AbstractFileSystem.s3n.impl: "org.apache.hadoop.fs.s3a.S3A"
+          - spark.hadoop.fs.s3.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
+          - spark.hadoop.fs.AbstractFileSystem.s3.impl: "org.apache.hadoop.fs.s3a.S3A"
+          - spark.hadoop.fs.s3a.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
+          - spark.hadoop.fs.AbstractFileSystem.s3a.impl: "org.apache.hadoop.fs.s3a.S3A"
+          - spark.hadoop.fs.s3a.multipart.threshold: "536870912"
+          - spark.excludeOnFailure.enabled: "true"
+          - spark.excludeOnFailure.timeout: "5m"
+          - spark.task.maxfailures: "8"
